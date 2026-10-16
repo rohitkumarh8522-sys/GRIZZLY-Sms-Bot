@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Telegram Virtual Account Bot is Running Smoothly!"
+    return "Telegram OTP Bot is Online & Active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -208,33 +208,36 @@ def grizzly_set_status(tx_id, status_code):
         return f"ERROR: {e}"
 
 # ==================== USER INTERFACE DESIGN ====================
+def main_menu_markup():
+    support_username = get_setting("support_user")
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("🛒 Buy Telegram Number", callback_data="select_country"),
+        types.InlineKeyboardButton("💰 Check Wallet Balance", callback_data="check_wallet"),
+        types.InlineKeyboardButton("➕ Add Money (Deposit)", callback_data="add_money"),
+        types.InlineKeyboardButton("💬 Live Support", url=f"https://t.me/{support_username}"),
+        types.InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="home")
+    )
+    return markup
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
-    support_username = get_setting("support_user")
-    
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    btn_buy = types.InlineKeyboardButton("🛒 Buy Telegram Number", callback_data="select_country")
-    btn_wallet = types.InlineKeyboardButton("💎 Wallet & Deposit", callback_data="wallet")
-    btn_support = types.InlineKeyboardButton("💬 Live Support", url=f"https://t.me/{support_username}")
-    btn_refresh = types.InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="home")
-    
-    markup.add(btn_buy, btn_wallet)
-    markup.add(btn_support, btn_refresh)
     
     text = (
-        "┏━━━━━━━━━━━━━━━━━━━━┓\n"
-        "✨ **PREMIUM TELEGRAM OTP HUB** ✨\n"
-        "┗━━━━━━━━━━━━━━━━━━━━┛\n\n"
-        f"👤 **Account ID:** `{user_id}`\n"
-        f"💳 **Wallet Balance:** `₹{balance:.2f}`\n\n"
+        "┌─────────────────────────┐\n"
+        "✨   **TELEGRAM OTP STORE**   ✨\n"
+        "└─────────────────────────┘\n\n"
+        f"👤 **User ID:** `{user_id}`\n"
+        f"💳 **Balance:** `₹{balance:.2f}`\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "🚀 *Instant Non-Drop Virtual Numbers*\n"
-        "⚡ *Automated OTP Delivery System*\n"
-        "━━━━━━━━━━━━━━━━━━━━━━"
+        "⚡ Instant Virtual Numbers\n"
+        "🔒 Secure & Non-Drop Accounts\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 *Niche diye gaye option ko select karein:*"
     )
-    bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=markup)
+    bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu_markup())
 
 @bot.callback_query_handler(func=lambda call: not call.data.startswith("admin_"))
 def user_callbacks(call):
@@ -242,38 +245,32 @@ def user_callbacks(call):
     
     if call.data == "home":
         balance = get_user_balance(user_id)
-        support_username = get_setting("support_user")
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            types.InlineKeyboardButton("🛒 Buy Telegram Number", callback_data="select_country"),
-            types.InlineKeyboardButton("💎 Wallet & Deposit", callback_data="wallet"),
-            types.InlineKeyboardButton("💬 Live Support", url=f"https://t.me/{support_username}"),
-            types.InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="home")
-        )
         text = (
-            "┏━━━━━━━━━━━━━━━━━━━━┓\n"
-            "✨ **PREMIUM TELEGRAM OTP HUB** ✨\n"
-            "┗━━━━━━━━━━━━━━━━━━━━┛\n\n"
-            f"👤 **Account ID:** `{user_id}`\n"
-            f"💳 **Wallet Balance:** `₹{balance:.2f}`\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━"
+            "┌─────────────────────────┐\n"
+            "✨   **TELEGRAM OTP STORE**   ✨\n"
+            "└─────────────────────────┘\n\n"
+            f"👤 **User ID:** `{user_id}`\n"
+            f"💳 **Balance:** `₹{balance:.2f}`\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "👇 *Select an option below:*"
         )
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=main_menu_markup())
 
-    elif call.data == "wallet":
+    elif call.data == "check_wallet":
         balance = get_user_balance(user_id)
         markup = types.InlineKeyboardMarkup(row_width=1)
-        btn_add = types.InlineKeyboardButton("➕ Add Money via QR / UPI", callback_data="add_money")
-        btn_back = types.InlineKeyboardButton("🔙 Back to Main Menu", callback_data="home")
-        markup.add(btn_add, btn_back)
+        markup.add(
+            types.InlineKeyboardButton("➕ Add Money Now", callback_data="add_money"),
+            types.InlineKeyboardButton("🔙 Back to Menu", callback_data="home")
+        )
         
         text = (
-            "┏━━━━━━━━━━━━━━━━━━━━┓\n"
-            "💎 **YOUR WALLET DASHBOARD** 💎\n"
-            "┗━━━━━━━━━━━━━━━━━━━━┛\n\n"
-            f"• **Available Balance:** `₹{balance:.2f}`\n"
-            f"• **User ID:** `{user_id}`\n\n"
-            "💡 *Balance add karne ke liye niche diye gaye button par click karein.*"
+            "┌─────────────────────────┐\n"
+            "💎    **WALLET OVERVIEW**    💎\n"
+            "└─────────────────────────┘\n\n"
+            f"👤 **Your ID:** `{user_id}`\n"
+            f"💰 **Current Balance:** `₹{balance:.2f}`\n\n"
+            "📌 *Account me balance add karne ke liye 'Add Money Now' par click karein.*"
         )
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
 
@@ -282,19 +279,25 @@ def user_callbacks(call):
         upi_id = get_setting("upi_id")
         
         caption = (
-            "┏━━━━━━━━━━━━━━━━━━━━┓\n"
-            "📲 **ADD FUNDS TO WALLET** 📲\n"
-            "┗━━━━━━━━━━━━━━━━━━━━┛\n\n"
-            "1️⃣ **Scan QR or Pay to UPI ID:**\n"
+            "┌─────────────────────────┐\n"
+            "📲    **ADD FUNDS TO WALLET**    📲\n"
+            "└─────────────────────────┘\n\n"
+            "1️⃣ **QR Code scan karein ya UPI ID par pay karein:**\n"
             f"📌 ` {upi_id} `\n\n"
-            "2️⃣ **Payment ke baad screenshot upload karein:**"
+            "2️⃣ **Payment complete karne ke baad niche screenshot upload karein:**"
         )
         
         markup = types.InlineKeyboardMarkup(row_width=1)
-        btn_submit = types.InlineKeyboardButton("📸 Upload Payment Screenshot", callback_data="submit_proof")
-        btn_back = types.InlineKeyboardButton("🔙 Back", callback_data="wallet")
-        markup.add(btn_submit, btn_back)
+        markup.add(
+            types.InlineKeyboardButton("📸 Upload Payment Screenshot", callback_data="submit_proof"),
+            types.InlineKeyboardButton("🔙 Back to Menu", callback_data="home")
+        )
         
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
+
         if qr_file_id:
             bot.send_photo(call.message.chat.id, qr_file_id, caption=caption, parse_mode="Markdown", reply_markup=markup)
         else:
@@ -304,7 +307,7 @@ def user_callbacks(call):
         user_states[user_id] = {"step": "WAITING_SCREENSHOT"}
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="home"))
-        bot.send_message(call.message.chat.id, "📸 **Kripya apne payment ka screenshot yahan bhej dein:**", parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(call.message.chat.id, "📸 **Kripya payment ka clear screenshot yahan bhej dein:**", parse_mode="Markdown", reply_markup=markup)
 
     elif call.data == "select_country":
         countries = get_countries()
@@ -324,7 +327,7 @@ def user_callbacks(call):
         user_bal = get_user_balance(user_id)
         
         if user_bal < cost:
-            bot.answer_callback_query(call.id, f"❌ Insufficient Balance! Required: ₹{cost:.2f}", show_alert=True)
+            bot.answer_callback_query(call.id, f"❌ Low Balance! Required: ₹{cost:.2f}", show_alert=True)
             return
 
         bot.answer_callback_query(call.id, "⌛ Generating Number...")
@@ -344,17 +347,17 @@ def user_callbacks(call):
             )
             
             msg = (
-                "┏━━━━━━━━━━━━━━━━━━━━┓\n"
-                "📱 **NUMBER GENERATED SUCCESSFULLY** 📱\n"
-                "┗━━━━━━━━━━━━━━━━━━━━┛\n\n"
+                "┌─────────────────────────┐\n"
+                "📱   **NUMBER GENERATED**   📱\n"
+                "└─────────────────────────┘\n\n"
                 f"📞 **Phone Number:** `{phone_num}`\n"
-                f"🆔 **Order Reference:** `{tx_id}`\n"
-                f"💰 **Deducted Amount:** `₹{cost:.2f}`\n\n"
-                "👉 *Is number ko Telegram app me dalein, aur OTP aane par niche button dabayein.*"
+                f"🆔 **Order ID:** `{tx_id}`\n"
+                f"💰 **Charged:** `₹{cost:.2f}`\n\n"
+                "👉 *Is number ko Telegram me dalein, aur OTP aane par button dabayein.*"
             )
             bot.send_message(call.message.chat.id, msg, parse_mode="Markdown", reply_markup=markup)
         else:
-            bot.send_message(call.message.chat.id, f"❌ **Server Notice:** `{res['message']}`\n\nStock khatam ho sakta hai, thodi der me try karein.", parse_mode="Markdown")
+            bot.send_message(call.message.chat.id, f"❌ **Notice:** `{res['message']}`\n\nStock temporarily unavailable. Please try again later.", parse_mode="Markdown")
 
     elif call.data.startswith("get_otp:"):
         _, tx_id, cost = call.data.split(":")
@@ -364,9 +367,9 @@ def user_callbacks(call):
             otp_code = status.split(":")[1]
             grizzly_set_status(tx_id, 6)
             log_sale(tx_id, user_id, "Telegram", float(cost), "COMPLETED")
-            bot.send_message(call.message.chat.id, f"🎉 **YOUR TELEGRAM OTP CODE:** \n\n`{otp_code}`", parse_mode="Markdown")
+            bot.send_message(call.message.chat.id, f"🎉 **YOUR TELEGRAM OTP CODE:**\n\n`{otp_code}`", parse_mode="Markdown")
         elif "STATUS_WAIT_CODE" in status:
-            bot.answer_callback_query(call.id, "⌛ OTP ka intezar hai... Pehle app se OTP bhejein!", show_alert=True)
+            bot.answer_callback_query(call.id, "⌛ Waiting for SMS... Send OTP from Telegram first!", show_alert=True)
         else:
             bot.answer_callback_query(call.id, f"Status: {status}", show_alert=True)
 
@@ -378,9 +381,9 @@ def user_callbacks(call):
         if any(keyword in cancel_res for keyword in ["ACCESS_CANCEL", "ACCESS_OK", "STATUS_CANCEL"]):
             update_user_balance(user_id, refund_amt)
             log_sale(tx_id, user_id, "Telegram", refund_amt, "CANCELLED")
-            bot.edit_message_text("❌ **Order Cancelled!** Balance successfully refunded.", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            bot.edit_message_text("❌ **Order Cancelled!** Balance successfully refunded to wallet.", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
         else:
-            bot.answer_callback_query(call.id, "❌ Cancel nahi ho sakta (OTP process shuru ho chuka hai).", show_alert=True)
+            bot.answer_callback_query(call.id, "❌ Cancel nahi ho sakta (OTP process active hai).", show_alert=True)
 
 @bot.message_handler(content_types=['photo'])
 def handle_user_screenshot(message):
@@ -398,7 +401,7 @@ def handle_user_screenshot(message):
         conn.close()
         
         del user_states[user_id]
-        bot.reply_to(message, f"✅ **Screenshot Submitted!** (ID: `#{req_id}`)\nAdmin dwara verify hote hi balance add kar diya jayega.", parse_mode="Markdown")
+        bot.reply_to(message, f"✅ **Screenshot Received!** (Request ID: `#{req_id}`)\nAdmin dwara verify hote hi balance credit kar diya jayega.", parse_mode="Markdown")
         
         admin_markup = types.InlineKeyboardMarkup(row_width=2)
         admin_markup.add(
@@ -406,10 +409,10 @@ def handle_user_screenshot(message):
             types.InlineKeyboardButton("❌ Reject Payment", callback_data=f"admin_reject:{req_id}:{user_id}")
         )
         
-        caption = f"🚨 **NEW PAYMENT PROOF RECEIVED** 🚨\n\n🆔 Request ID: `#{req_id}`\n👤 User ID: `{user_id}`"
+        caption = f"🚨 **NEW PAYMENT PROOF** 🚨\n\n🆔 Request ID: `#{req_id}`\n👤 User ID: `{user_id}`"
         bot.send_photo(ADMIN_ID, photo_id, caption=caption, parse_mode="Markdown", reply_markup=admin_markup)
 
-# ==================== STYLISH ADMIN PANEL ====================
+# ==================== PREMIUM ADMIN PANEL ====================
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
     if message.from_user.id != ADMIN_ID:
@@ -423,26 +426,26 @@ def admin_panel(message):
     markup.add(
         types.InlineKeyboardButton("🖼️ Set Payment QR", callback_data="admin_set_qr"),
         types.InlineKeyboardButton("🏷️ Set UPI ID", callback_data="admin_set_upi"),
-        types.InlineKeyboardButton("💬 Support Username", callback_data="admin_set_support"),
+        types.InlineKeyboardButton("💬 Support Handle", callback_data="admin_set_support"),
         types.InlineKeyboardButton("💵 Set Profit Margin", callback_data="admin_set_margin"),
         types.InlineKeyboardButton("🌍 Add Country", callback_data="admin_add_country"),
         types.InlineKeyboardButton("🗑️ Delete Country", callback_data="admin_del_country"),
-        types.InlineKeyboardButton("➕ Direct Add Balance", callback_data="admin_manual_add")
+        types.InlineKeyboardButton("➕ Add Balance", callback_data="admin_manual_add")
     )
 
     text = (
-        "┏━━━━━━━━━━━━━━━━━━━━┓\n"
-        "⚡ **ADMIN MASTER CONTROL** ⚡\n"
-        "┗━━━━━━━━━━━━━━━━━━━━┛\n\n"
-        "📊 **ANALYTICS SUMMARY:**\n"
-        f"• Total Registered Users: `{users}`\n"
-        f"• Completed Sales: `{orders}`\n"
+        "┌─────────────────────────┐\n"
+        "⚡   **ADMIN CONTROL HUB**   ⚡\n"
+        "└─────────────────────────┘\n\n"
+        "📊 **ANALYTICS:**\n"
+        f"• Total Users: `{users}`\n"
+        f"• Completed Orders: `{orders}`\n"
         f"• Total Revenue: `₹{revenue:.2f}`\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💳 **Grizzly API Wallet:** `{g_bal_str}`\n"
-        f"💵 **Current Profit Margin:** `₹{get_setting('profit_margin')}`\n"
-        f"📌 **Support Handle:** `@{get_setting('support_user')}`\n"
-        f"🏦 **Active UPI ID:** `{get_setting('upi_id')}`\n"
+        f"💳 **Grizzly Wallet:** `{g_bal_str}`\n"
+        f"💵 **Profit Margin:** `₹{get_setting('profit_margin')}`\n"
+        f"📌 **Support:** `@{get_setting('support_user')}`\n"
+        f"🏦 **UPI ID:** `{get_setting('upi_id')}`\n"
         "━━━━━━━━━━━━━━━━━━━━━━"
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=markup)
@@ -455,7 +458,7 @@ def admin_callbacks(call):
     if call.data.startswith("admin_approve_start:"):
         _, req_id, u_id = call.data.split(":")
         user_states[ADMIN_ID] = {"step": "ADMIN_INPUT_APPROVE_AMOUNT", "req_id": req_id, "target_user": u_id}
-        bot.send_message(ADMIN_ID, f"💎 **Kitna amount add karna hai User `{u_id}` ke liye?** (Sirf number type karein):", parse_mode="Markdown")
+        bot.send_message(ADMIN_ID, f"💎 **User `{u_id}` ko kitna amount dena hai?** (Sirf number type karein):", parse_mode="Markdown")
 
     elif call.data.startswith("admin_reject:"):
         _, req_id, u_id = call.data.split(":")
@@ -584,5 +587,5 @@ def handle_admin_inputs(message):
 
 # ==================== START BOT ====================
 if __name__ == "__main__":
-    print("Stylish Telegram Bot Started...")
+    print("Premium Telegram Bot Started...")
     bot.infinity_polling()
