@@ -540,7 +540,7 @@ def admin_callbacks(call):
 
     elif call.data == "admin_set_qr":
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_QR"}
-        bot.send_message(ADMIN_ID, "📸 Naya QR Code photo yahan bhej dein:")
+        bot.send_message(ADMIN_ID, "📸 Naya QR Code photo ya document yahan bhej dein:")
 
     elif call.data == "admin_set_upi":
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_UPI"}
@@ -554,14 +554,24 @@ def admin_callbacks(call):
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_DIRECT_ADD"}
         bot.send_message(ADMIN_ID, "➕ **Format:** `USER_ID AMOUNT`\n\n*Example:* `8926941404 100`", parse_mode="Markdown")
 
-@bot.message_handler(content_types=['photo', 'text'])
+@bot.message_handler(content_types=['photo', 'document', 'text'])
 def handle_admin_inputs(message):
     if message.from_user.id != ADMIN_ID:
         return
 
     state = user_states.get(ADMIN_ID, {}).get("step")
     
-    if state == "ADMIN_WAITING_MARGIN" and message.text:
+    if state == "ADMIN_WAITING_QR" and (message.photo or message.document):
+        if message.photo:
+            file_id = message.photo[-1].file_id
+        else:
+            file_id = message.document.file_id
+            
+        set_setting("qr_file_id", file_id)
+        del user_states[ADMIN_ID]
+        bot.reply_to(message, "✅ **Payment QR Code Updated Successfully!**", parse_mode="Markdown")
+
+    elif state == "ADMIN_WAITING_MARGIN" and message.text:
         try:
             m = float(message.text.strip())
             set_setting("profit_margin", str(m))
@@ -599,12 +609,6 @@ def handle_admin_inputs(message):
             bot.reply_to(message, f"✅ **Country Added:** `{c_name}` (ID: {c_id}) - Base Price: `₹{c_price}`", parse_mode="Markdown")
         except Exception:
             bot.reply_to(message, "❌ Format error. Use: `COUNTRY_ID NAME PRICE`")
-
-    elif state == "ADMIN_WAITING_QR" and message.photo:
-        file_id = message.photo[-1].file_id
-        set_setting("qr_file_id", file_id)
-        del user_states[ADMIN_ID]
-        bot.reply_to(message, "✅ **Payment QR Updated Successfully!**", parse_mode="Markdown")
 
     elif state == "ADMIN_WAITING_UPI" and message.text:
         set_setting("upi_id", message.text.strip())
