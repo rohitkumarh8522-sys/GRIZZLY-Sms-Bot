@@ -56,6 +56,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS deposits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
+            amount REAL,
             photo_id TEXT,
             status TEXT DEFAULT 'PENDING'
         )
@@ -80,6 +81,8 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('qr_file_id', '')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('upi_id', 'example@upi')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('profit_margin', '5.0')")
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('min_deposit', '50.0')")
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('max_deposit', '10000.0')")
     
     cursor.execute("INSERT OR IGNORE INTO countries (country_id, country_name, price) VALUES (0, '🇷🇺 Russia / Any', 15.0)")
     cursor.execute("INSERT OR IGNORE INTO countries (country_id, country_name, price) VALUES (22, '🇮🇳 India', 25.0)")
@@ -277,19 +280,22 @@ def user_callbacks(call):
     elif call.data == "add_money":
         qr_file_id = get_setting("qr_file_id")
         upi_id = get_setting("upi_id")
+        min_dep = get_setting("min_deposit")
+        max_dep = get_setting("max_deposit")
         
         caption = (
             "┌─────────────────────────┐\n"
             "📲    **ADD FUNDS TO WALLET**    📲\n"
             "└─────────────────────────┘\n\n"
+            f"⚠️ **Limits:** Min `₹{min_dep}` — Max `₹{max_dep}`\n\n"
             "1️⃣ **QR Code scan karein ya UPI ID par pay karein:**\n"
             f"📌 ` {upi_id} `\n\n"
-            "2️⃣ **Payment complete karne ke baad niche screenshot upload karein:**"
+            "2️⃣ **Payment ke baad niche button dabakar amount enter karein:**"
         )
         
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton("📸 Upload Payment Screenshot", callback_data="submit_proof"),
+            types.InlineKeyboardButton("💵 Enter Amount & Upload Proof", callback_data="start_deposit"),
             types.InlineKeyboardButton("🔙 Back to Menu", callback_data="home")
         )
         
@@ -303,11 +309,11 @@ def user_callbacks(call):
         else:
             bot.send_message(call.message.chat.id, caption, parse_mode="Markdown", reply_markup=markup)
 
-    elif call.data == "submit_proof":
-        user_states[user_id] = {"step": "WAITING_SCREENSHOT"}
+    elif call.data == "start_deposit":
+        user_states[user_id] = {"step": "WAITING_DEPOSIT_AMOUNT"}
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="home"))
-        bot.send_message(call.message.chat.id, "📸 **Kripya payment ka clear screenshot yahan bhej dein:**", parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(call.message.chat.id, "💵 **Aapne kitne rupay ka payment kiya hai? (Amount type karein):**", parse_mode="Markdown", reply_markup=markup)
 
     elif call.data == "select_country":
         countries = get_countries()
@@ -385,31 +391,49 @@ def user_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "❌ Cancel nahi ho sakta (OTP process active hai).", show_alert=True)
 
+@bot.message_handler(func=lambda msg: msg.from_user.id in user_states and user_states[msg.from_user.id].get("step") == "WAITING_DEPOSIT_AMOUNT")
+def handle_deposit_amount(message):
+    user_id = message.from_user.id
+    try:
+        amt = float(message.text.strip())
+        min_dep = float(get_setting("min_deposit") or "50.0")
+        max_dep = float(get_setting("max_deposit") or "10000.0")
+        
+        if amt < min_dep or amt > max_dep:
+            bot.reply_to(message, f"❌ **Invalid Amount!**\nLimit: Min `₹{min_dep}` aur Max `₹{max_dep}` ke beech amount daalein.", parse_mode="Markdown")
+            return
+            
+        user_states[user_id] = {"step": "WAITING_DEPOSIT_SCREENSHOT", "amount": amt}
+        bot.reply_to(message, f"✅ Amount accepted: `₹{amt}`\n\n📸 **Ab apne payment ka clear screenshot yahan bhej dein:**", parse_mode="Markdown")
+    except ValueError:
+        bot.reply_to(message, "❌ Kripya sirf valid number type karein (e.g. 100)")
+
 @bot.message_handler(content_types=['photo'])
 def handle_user_screenshot(message):
     user_id = message.from_user.id
-    state = user_states.get(user_id, {}).get("step")
+    state_data = user_states.get(user_id, {})
     
-    if state == "WAITING_SCREENSHOT":
+    if state_data.get("step") == "WAITING_DEPOSIT_SCREENSHOT":
         photo_id = message.photo[-1].file_id
+        amt = state_data["amount"]
         
         conn = sqlite3.connect("bot_database.db")
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO deposits (user_id, photo_id) VALUES (?, ?)", (user_id, photo_id))
+        cursor.execute("INSERT INTO deposits (user_id, amount, photo_id) VALUES (?, ?, ?)", (user_id, amt, photo_id))
         req_id = cursor.lastrowid
         conn.commit()
         conn.close()
         
         del user_states[user_id]
-        bot.reply_to(message, f"✅ **Screenshot Received!** (Request ID: `#{req_id}`)\nAdmin dwara verify hote hi balance credit kar diya jayega.", parse_mode="Markdown")
+        bot.reply_to(message, f"✅ **Screenshot Received!** (Request ID: `#{req_id}`)\nAdmin dwara verify hote hi `₹{amt}` credit kar diya jayega.", parse_mode="Markdown")
         
         admin_markup = types.InlineKeyboardMarkup(row_width=2)
         admin_markup.add(
-            types.InlineKeyboardButton("✅ Approve & Add Balance", callback_data=f"admin_approve_start:{req_id}:{user_id}"),
-            types.InlineKeyboardButton("❌ Reject Payment", callback_data=f"admin_reject:{req_id}:{user_id}")
+            types.InlineKeyboardButton(f"✅ Approve (₹{amt})", callback_data=f"admin_approve:{req_id}:{user_id}:{amt}"),
+            types.InlineKeyboardButton("❌ Reject", callback_data=f"admin_reject:{req_id}:{user_id}")
         )
         
-        caption = f"🚨 **NEW PAYMENT PROOF** 🚨\n\n🆔 Request ID: `#{req_id}`\n👤 User ID: `{user_id}`"
+        caption = f"🚨 **NEW PAYMENT PROOF** 🚨\n\n🆔 Request ID: `#{req_id}`\n👤 User ID: `{user_id}`\n💵 Claimed Amount: `₹{amt}`"
         bot.send_photo(ADMIN_ID, photo_id, caption=caption, parse_mode="Markdown", reply_markup=admin_markup)
 
 # ==================== PREMIUM ADMIN PANEL ====================
@@ -427,9 +451,11 @@ def admin_panel(message):
         types.InlineKeyboardButton("🖼️ Set Payment QR", callback_data="admin_set_qr"),
         types.InlineKeyboardButton("🏷️ Set UPI ID", callback_data="admin_set_upi"),
         types.InlineKeyboardButton("💬 Support Handle", callback_data="admin_set_support"),
-        types.InlineKeyboardButton("💵 Set Profit Margin", callback_data="admin_set_margin"),
+        types.InlineKeyboardButton("💵 Set Margin", callback_data="admin_set_margin"),
+        types.InlineKeyboardButton("📉 Min Deposit", callback_data="admin_set_min"),
+        types.InlineKeyboardButton("📈 Max Deposit", callback_data="admin_set_max"),
         types.InlineKeyboardButton("🌍 Add Country", callback_data="admin_add_country"),
-        types.InlineKeyboardButton("🗑️ Delete Country", callback_data="admin_del_country"),
+        types.InlineKeyboardButton("🗑️ Del Country", callback_data="admin_del_country"),
         types.InlineKeyboardButton("➕ Add Balance", callback_data="admin_manual_add")
     )
 
@@ -444,6 +470,8 @@ def admin_panel(message):
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         f"💳 **Grizzly Wallet:** `{g_bal_str}`\n"
         f"💵 **Profit Margin:** `₹{get_setting('profit_margin')}`\n"
+        f"📉 **Min Deposit:** `₹{get_setting('min_deposit')}`\n"
+        f"📈 **Max Deposit:** `₹{get_setting('max_deposit')}`\n"
         f"📌 **Support:** `@{get_setting('support_user')}`\n"
         f"🏦 **UPI ID:** `{get_setting('upi_id')}`\n"
         "━━━━━━━━━━━━━━━━━━━━━━"
@@ -455,10 +483,20 @@ def admin_callbacks(call):
     if call.from_user.id != ADMIN_ID:
         return
 
-    if call.data.startswith("admin_approve_start:"):
-        _, req_id, u_id = call.data.split(":")
-        user_states[ADMIN_ID] = {"step": "ADMIN_INPUT_APPROVE_AMOUNT", "req_id": req_id, "target_user": u_id}
-        bot.send_message(ADMIN_ID, f"💎 **User `{u_id}` ko kitna amount dena hai?** (Sirf number type karein):", parse_mode="Markdown")
+    if call.data.startswith("admin_approve:"):
+        _, req_id, u_id, amt = call.data.split(":")
+        u_id, amt = int(u_id), float(amt)
+        
+        update_user_balance(u_id, amt)
+        
+        conn = sqlite3.connect("bot_database.db")
+        cursor = conn.cursor()
+        cursor.execute("UPDATE deposits SET status = 'APPROVED' WHERE id = ?", (req_id,))
+        conn.commit()
+        conn.close()
+        
+        bot.edit_message_caption(f"✅ Deposit Request `#{req_id}` APPROVED! Added `₹{amt}` to User `{u_id}`.", call.message.chat.id, call.message.message_id)
+        bot.send_message(u_id, f"🎉 **Payment Approved!** `₹{amt}` wallet me credit kar diya gaya hai.", parse_mode="Markdown")
 
     elif call.data.startswith("admin_reject:"):
         _, req_id, u_id = call.data.split(":")
@@ -475,6 +513,14 @@ def admin_callbacks(call):
     elif call.data == "admin_set_margin":
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_MARGIN"}
         bot.send_message(ADMIN_ID, "💵 **Naya Profit Margin enter karein (e.g. 5.0):**")
+
+    elif call.data == "admin_set_min":
+        user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_MIN_DEP"}
+        bot.send_message(ADMIN_ID, "📉 **Naya Minimum Deposit Limit enter karein (e.g. 50.0):**")
+
+    elif call.data == "admin_set_max":
+        user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_MAX_DEP"}
+        bot.send_message(ADMIN_ID, "📈 **Naya Maximum Deposit Limit enter karein (e.g. 10000.0):**")
 
     elif call.data == "admin_add_country":
         user_states[ADMIN_ID] = {"step": "ADMIN_ADD_COUNTRY"}
@@ -515,32 +561,30 @@ def handle_admin_inputs(message):
 
     state = user_states.get(ADMIN_ID, {}).get("step")
     
-    if state == "ADMIN_INPUT_APPROVE_AMOUNT" and message.text:
-        try:
-            amt = float(message.text.strip())
-            req_id = user_states[ADMIN_ID]["req_id"]
-            u_id = int(user_states[ADMIN_ID]["target_user"])
-            
-            update_user_balance(u_id, amt)
-            
-            conn = sqlite3.connect("bot_database.db")
-            cursor = conn.cursor()
-            cursor.execute("UPDATE deposits SET status = 'APPROVED' WHERE id = ?", (req_id,))
-            conn.commit()
-            conn.close()
-            
-            del user_states[ADMIN_ID]
-            bot.reply_to(message, f"✅ Approved Request `#{req_id}`! Added `₹{amt}` to User `{u_id}`.", parse_mode="Markdown")
-            bot.send_message(u_id, f"🎉 **Payment Approved!** `₹{amt}` wallet me credit kar diya gaya hai.", parse_mode="Markdown")
-        except Exception:
-            bot.reply_to(message, "❌ Invalid amount format.")
-
-    elif state == "ADMIN_WAITING_MARGIN" and message.text:
+    if state == "ADMIN_WAITING_MARGIN" and message.text:
         try:
             m = float(message.text.strip())
             set_setting("profit_margin", str(m))
             del user_states[ADMIN_ID]
             bot.reply_to(message, f"✅ **Profit Margin Updated:** `₹{m}`", parse_mode="Markdown")
+        except Exception:
+            bot.reply_to(message, "❌ Invalid number.")
+
+    elif state == "ADMIN_WAITING_MIN_DEP" and message.text:
+        try:
+            m = float(message.text.strip())
+            set_setting("min_deposit", str(m))
+            del user_states[ADMIN_ID]
+            bot.reply_to(message, f"✅ **Minimum Deposit Updated:** `₹{m}`", parse_mode="Markdown")
+        except Exception:
+            bot.reply_to(message, "❌ Invalid number.")
+
+    elif state == "ADMIN_WAITING_MAX_DEP" and message.text:
+        try:
+            m = float(message.text.strip())
+            set_setting("max_deposit", str(m))
+            del user_states[ADMIN_ID]
+            bot.reply_to(message, f"✅ **Maximum Deposit Updated:** `₹{m}`", parse_mode="Markdown")
         except Exception:
             bot.reply_to(message, "❌ Invalid number.")
 
