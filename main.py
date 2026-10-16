@@ -1,8 +1,24 @@
 import sqlite3
 import requests
 import os
+import threading
+from flask import Flask
 import telebot
 from telebot import types
+
+# ==================== RENDER FREE WEB SERVER (PORT BINDING) ====================
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Telegram Virtual Account Bot is Running Successfully!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+# Flask server ko background thread me chalana taaki Render port error na de
+threading.Thread(target=run_flask).start()
 
 # ==================== CONFIGURATION ====================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN_HERE")
@@ -471,5 +487,5 @@ def manual_add_balance(message):
 
 # ==================== START BOT ====================
 if __name__ == "__main__":
-    print("Bot with Admin Panel Started...")
+    print("Bot with Flask Web Server & Admin Panel Started...")
     bot.infinity_polling()
