@@ -412,7 +412,6 @@ def handle_deposit_amount(message):
 def handle_user_screenshot(message):
     user_id = message.from_user.id
     
-    # Agar message bhejne wala ADMIN hai, toh ye user screenshot handler kaam nahi karega (taaki admin ka QR upload block na ho)
     if user_id == ADMIN_ID:
         return
 
@@ -544,7 +543,7 @@ def admin_callbacks(call):
 
     elif call.data == "admin_set_qr":
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_QR"}
-        bot.send_message(ADMIN_ID, "📸 Naya QR Code photo ya document yahan bhej dein:")
+        bot.send_message(ADMIN_ID, "📸 **[QR UPLOAD MODE ACTIVE]**\n\nAb apna QR Code photo ya document yahan bhej dein:")
 
     elif call.data == "admin_set_upi":
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_UPI"}
