@@ -411,8 +411,12 @@ def handle_deposit_amount(message):
 @bot.message_handler(content_types=['photo'])
 def handle_user_screenshot(message):
     user_id = message.from_user.id
-    state_data = user_states.get(user_id, {})
     
+    # Agar message bhejne wala ADMIN hai, toh ye user screenshot handler kaam nahi karega (taaki admin ka QR upload block na ho)
+    if user_id == ADMIN_ID:
+        return
+
+    state_data = user_states.get(user_id, {})
     if state_data.get("step") == "WAITING_DEPOSIT_SCREENSHOT":
         photo_id = message.photo[-1].file_id
         amt = state_data["amount"]
