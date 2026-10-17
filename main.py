@@ -278,7 +278,7 @@ def user_callbacks(call):
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
 
     elif call.data == "add_money":
-        qr_file_id = get_setting("qr_file_id")
+        qr_url = get_setting("qr_file_id")
         upi_id = get_setting("upi_id")
         min_dep = get_setting("min_deposit")
         max_dep = get_setting("max_deposit")
@@ -304,16 +304,16 @@ def user_callbacks(call):
         except:
             pass
 
-        if qr_file_id:
-            bot.send_photo(call.message.chat.id, qr_file_id, caption=caption, parse_mode="Markdown", reply_markup=markup)
+        if qr_url and qr_url.startswith("http"):
+            bot.send_photo(call.message.chat.id, qr_url, caption=caption, parse_mode="Markdown", reply_markup=markup)
         else:
-            bot.send_message(call.message.chat.id, caption, parse_mode="Markdown", reply_markup=markup)
+            bot.send_message(call.message.chat.id, caption + "\n\n*(Admin ne abhi QR link set nahi kiya hai)*", parse_mode="Markdown", reply_markup=markup)
 
     elif call.data == "start_deposit":
         user_states[user_id] = {"step": "WAITING_DEPOSIT_AMOUNT"}
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="home"))
-        bot.send_message(call.message.chat.id, "💵 **Aapne kitne rupay ka payment kiya hai? (Amount type karein):**", parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(message=call.message, text="💵 **Aapne kitne rupay ka payment kiya hai? (Amount type karein):**", parse_mode="Markdown", reply_markup=markup)
 
     elif call.data == "select_country":
         countries = get_countries()
@@ -451,7 +451,7 @@ def admin_panel(message):
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("🖼️ Set Payment QR", callback_data="admin_set_qr"),
+        types.InlineKeyboardButton("🖼️ Set Payment QR URL", callback_data="admin_set_qr"),
         types.InlineKeyboardButton("🏷️ Set UPI ID", callback_data="admin_set_upi"),
         types.InlineKeyboardButton("💬 Support Handle", callback_data="admin_set_support"),
         types.InlineKeyboardButton("💵 Set Margin", callback_data="admin_set_margin"),
@@ -543,7 +543,7 @@ def admin_callbacks(call):
 
     elif call.data == "admin_set_qr":
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_QR"}
-        bot.send_message(ADMIN_ID, "📸 **[QR UPLOAD MODE ACTIVE]**\n\nAb apna QR Code photo ya document yahan bhej dein:")
+        bot.send_message(ADMIN_ID, "🔗 **QR Image URL Bhejein:**\n\nApne QR code ka direct image link (jaise Imgur link ya kisi bhi image hosting ka link) yahan text mein bhej dein:")
 
     elif call.data == "admin_set_upi":
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_UPI"}
@@ -557,24 +557,20 @@ def admin_callbacks(call):
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_DIRECT_ADD"}
         bot.send_message(ADMIN_ID, "➕ **Format:** `USER_ID AMOUNT`\n\n*Example:* `8926941404 100`", parse_mode="Markdown")
 
-@bot.message_handler(content_types=['photo', 'document', 'text'])
-def handle_admin_inputs(message):
+@bot.message_handler(content_types=['text'])
+def handle_admin_text_inputs(message):
     if message.from_user.id != ADMIN_ID:
         return
 
     state = user_states.get(ADMIN_ID, {}).get("step")
     
-    if state == "ADMIN_WAITING_QR" and (message.photo or message.document):
-        if message.photo:
-            file_id = message.photo[-1].file_id
-        else:
-            file_id = message.document.file_id
-            
-        set_setting("qr_file_id", file_id)
+    if state == "ADMIN_WAITING_QR":
+        qr_url = message.text.strip()
+        set_setting("qr_file_id", qr_url)
         del user_states[ADMIN_ID]
-        bot.reply_to(message, "✅ **Payment QR Code Updated Successfully!**", parse_mode="Markdown")
+        bot.reply_to(message, f"✅ **Payment QR Image URL Updated Successfully!**\nLink: `{qr_url}`", parse_mode="Markdown")
 
-    elif state == "ADMIN_WAITING_MARGIN" and message.text:
+    elif state == "ADMIN_WAITING_MARGIN":
         try:
             m = float(message.text.strip())
             set_setting("profit_margin", str(m))
@@ -583,7 +579,7 @@ def handle_admin_inputs(message):
         except Exception:
             bot.reply_to(message, "❌ Invalid number.")
 
-    elif state == "ADMIN_WAITING_MIN_DEP" and message.text:
+    elif state == "ADMIN_WAITING_MIN_DEP":
         try:
             m = float(message.text.strip())
             set_setting("min_deposit", str(m))
@@ -592,7 +588,7 @@ def handle_admin_inputs(message):
         except Exception:
             bot.reply_to(message, "❌ Invalid number.")
 
-    elif state == "ADMIN_WAITING_MAX_DEP" and message.text:
+    elif state == "ADMIN_WAITING_MAX_DEP":
         try:
             m = float(message.text.strip())
             set_setting("max_deposit", str(m))
@@ -601,7 +597,7 @@ def handle_admin_inputs(message):
         except Exception:
             bot.reply_to(message, "❌ Invalid number.")
 
-    elif state == "ADMIN_ADD_COUNTRY" and message.text:
+    elif state == "ADMIN_ADD_COUNTRY":
         try:
             parts = message.text.strip().split()
             c_id = int(parts[0])
@@ -613,18 +609,18 @@ def handle_admin_inputs(message):
         except Exception:
             bot.reply_to(message, "❌ Format error. Use: `COUNTRY_ID NAME PRICE`")
 
-    elif state == "ADMIN_WAITING_UPI" and message.text:
+    elif state == "ADMIN_WAITING_UPI":
         set_setting("upi_id", message.text.strip())
         del user_states[ADMIN_ID]
         bot.reply_to(message, f"✅ **UPI ID Updated:** `{message.text.strip()}`", parse_mode="Markdown")
 
-    elif state == "ADMIN_WAITING_SUPPORT" and message.text:
+    elif state == "ADMIN_WAITING_SUPPORT":
         username = message.text.strip().replace("@", "")
         set_setting("support_user", username)
         del user_states[ADMIN_ID]
         bot.reply_to(message, f"✅ **Support Username Updated:** `@{username}`", parse_mode="Markdown")
 
-    elif state == "ADMIN_WAITING_DIRECT_ADD" and message.text:
+    elif state == "ADMIN_WAITING_DIRECT_ADD":
         try:
             parts = message.text.strip().split()
             target_user = int(parts[0])
@@ -638,5 +634,5 @@ def handle_admin_inputs(message):
 
 # ==================== START BOT ====================
 if __name__ == "__main__":
-    print("Premium Telegram Bot Started...")
+    print("Premium Telegram Bot Started with URL-based QR Support...")
     bot.infinity_polling()
