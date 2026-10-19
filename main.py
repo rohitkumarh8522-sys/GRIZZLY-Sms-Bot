@@ -79,7 +79,9 @@ def init_db():
     ''')
     
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('support_user', 'admin_username')")
-    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('upi_id', 'example@upi')")
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('upi_id', 'rohit0853@ptaxis')")
+    cursor.execute("UPDATE settings SET value = 'rohit0853@ptaxis' WHERE key = 'upi_id' AND (value = 'example@upi' OR value = '')")
+    
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('profit_margin', '5.0')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('min_deposit', '50.0')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('max_deposit', '10000.0')")
@@ -189,9 +191,9 @@ def get_sales_stats():
     conn.close()
     return total_orders, total_revenue, total_users
 
-# ==================== DYNAMIC DYNAMIC QR GENERATOR ====================
-def generate_upi_qr(upi_id, amount, name="TG_SHOP"):
-    """Generates a dynamic UPI QR Code Image URL using open API"""
+# ==================== DYNAMIC UPI QR GENERATOR ====================
+def generate_upi_qr(upi_id, amount, name="TG SHOP"):
+    """Generates a dynamic UPI QR Code Image URL using open API with user's actual UPI"""
     upi_uri = f"upi://pay?pa={upi_id}&pn={urllib.parse.quote(name)}&am={amount}&cu=INR"
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={urllib.parse.quote(upi_uri)}"
     return qr_url
@@ -669,6 +671,9 @@ def handle_admin_text_inputs(message):
         except Exception:
             bot.reply_to(message, "❌ Invalid number.")
 
+    elif state == "ADMIN_WAITING_MIN_DEP":
+        pass
+
     elif state == "ADMIN_WAITING_MAX_DEP":
         try:
             m = float(message.text.strip())
@@ -715,5 +720,5 @@ def handle_admin_text_inputs(message):
 
 # ==================== START BOT ====================
 if __name__ == "__main__":
-    print("TG SHOP Bot Running with Dynamic UPI QR System...")
+    print("TG SHOP Bot Running with Dynamic UPI QR System for rohit0853@ptaxis...")
     bot.infinity_polling()
