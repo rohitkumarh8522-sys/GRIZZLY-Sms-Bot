@@ -91,47 +91,47 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('support_user', 'admin_username')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('upi_id', 'rohit0853@ptaxis')")
     cursor.execute("UPDATE settings SET value = 'rohit0853@ptaxis' WHERE key = 'upi_id' AND (value = 'example@upi' OR value = '')")
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('group_link', 'https://t.me/your_group_link')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('profit_margin', '10.0')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('min_deposit', '50.0')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('max_deposit', '10000.0')")
     
     # Full Country Database List Setup
-    cursor.execute("DELETE FROM countries")
-    cursor.execute("DELETE FROM country_tiers")
-    
-    all_countries = [
-        (22, "India", "🇮🇳"),
-        (0, "Russia", "🇷🇺"),
-        (187, "USA", "🇺🇸"),
-        (6, "Indonesia", "🇮🇩"),
-        (5, "Myanmar", "🇲🇲"),
-        (60, "Bangladesh", "🇧🇩"),
-        (10, "Vietnam", "🇻🇳"),
-        (16, "United Kingdom", "🇬🇧"),
-        (11, "Philippines", "🇵🇭"),
-        (86, "Nigeria", "🇳🇬"),
-        (36, "Canada", "🇨🇦"),
-        (999, "Global Express", "🌐")
-    ]
-    cursor.executemany("INSERT INTO countries (country_id, country_name, flag) VALUES (?, ?, ?)", all_countries)
-    
-    all_tiers = [
-        (22, "⚡ Premium Non-Drop", 55.0, 100),
-        (22, "💎 High Success Rate", 45.0, 7665),
-        (22, "🏷️ Budget Server", 30.0, 7769),
-        (0, "🚀 Russia Fast SMS", 15.0, 9500),
-        (187, "🛡️ USA Premium Line", 35.0, 1200),
-        (6, "⭐ Indonesia Server", 20.0, 3100),
-        (5, "🇲🇲 Myanmar Server", 18.0, 1500),
-        (60, "🇧🇩 Bangladesh Line", 16.0, 2200),
-        (10, "🇻🇳 Vietnam Line", 17.0, 1800),
-        (16, "🇬🇧 UK VIP Line", 40.0, 850),
-        (11, "🇵🇭 Philippines Express", 22.0, 1400),
-        (86, "🇳🇬 Nigeria Express", 14.0, 5000),
-        (36, "🇨🇦 Canada VIP", 38.0, 600),
-        (999, "🌐 Auto Cheapest Route", 18.0, 10000)
-    ]
-    cursor.executemany("INSERT INTO country_tiers (country_id, tier_name, base_price, qty) VALUES (?, ?, ?, ?)", all_tiers)
+    cursor.execute("SELECT COUNT(*) FROM countries")
+    if cursor.fetchone()[0] == 0:
+        all_countries = [
+            (22, "India", "🇮🇳"),
+            (0, "Russia", "🇷🇺"),
+            (187, "USA", "🇺🇸"),
+            (6, "Indonesia", "🇮🇩"),
+            (5, "Myanmar", "🇲🇲"),
+            (60, "Bangladesh", "🇧🇩"),
+            (10, "Vietnam", "🇻🇳"),
+            (16, "United Kingdom", "🇬🇧"),
+            (11, "Philippines", "🇵🇭"),
+            (86, "Nigeria", "🇳🇬"),
+            (36, "Canada", "🇨🇦"),
+            (999, "Global Express", "🌐")
+        ]
+        cursor.executemany("INSERT INTO countries (country_id, country_name, flag) VALUES (?, ?, ?)", all_countries)
+        
+        all_tiers = [
+            (22, "⚡ Premium Non-Drop", 55.0, 100),
+            (22, "💎 High Success Rate", 45.0, 7665),
+            (22, "🏷️ Budget Server", 30.0, 7769),
+            (0, "🚀 Russia Fast SMS", 15.0, 9500),
+            (187, "🛡️ USA Premium Line", 35.0, 1200),
+            (6, "⭐ Indonesia Server", 20.0, 3100),
+            (5, "🇲🇲 Myanmar Server", 18.0, 1500),
+            (60, "🇧🇩 Bangladesh Line", 16.0, 2200),
+            (10, "🇻🇳 Vietnam Line", 17.0, 1800),
+            (16, "🇬🇧 UK VIP Line", 40.0, 850),
+            (11, "🇵🇭 Philippines Express", 22.0, 1400),
+            (86, "🇳🇬 Nigeria Express", 14.0, 5000),
+            (36, "🇨🇦 Canada VIP", 38.0, 600),
+            (999, "🌐 Auto Cheapest Route", 18.0, 10000)
+        ]
+        cursor.executemany("INSERT INTO country_tiers (country_id, tier_name, base_price, qty) VALUES (?, ?, ?, ?)", all_tiers)
             
     conn.commit()
     conn.close()
@@ -446,15 +446,21 @@ def user_callbacks(call):
 
     elif call.data == "sales_info":
         orders, revenue, _ = get_sales_stats()
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🔙 Main Menu", callback_data="home"))
+        group_link = get_setting("group_link") or "https://t.me/telegram"
+        
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton("📢 Join Official Group / Channel", url=group_link),
+            types.InlineKeyboardButton("🔙 Main Menu", callback_data="home")
+        )
         
         text = (
             "📊 **SYSTEM LIVE METRICS**\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"📦 **Total Accounts Issued:** `{orders}`\n"
             f"⚡ **Delivery Speed:** `Instant (<3 Sec)`\n"
-            f"🛡️ **System Status:** `100% Operational`"
+            f"🛡️ **System Status:** `100% Operational`\n\n"
+            "👇 *Click below to join our official update group or channel:*"
         )
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
 
@@ -619,6 +625,7 @@ def admin_panel(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("🏷️ Set UPI ID", callback_data="admin_set_upi"),
+        types.InlineKeyboardButton("📢 Set Group Link", callback_data="admin_set_group"),
         types.InlineKeyboardButton("💬 Support Handle", callback_data="admin_set_support"),
         types.InlineKeyboardButton("💵 Profit Margin", callback_data="admin_set_margin"),
         types.InlineKeyboardButton("🌍 Add Price Tier", callback_data="admin_add_tier"),
@@ -631,7 +638,8 @@ def admin_panel(message):
         f"👥 Users: `{users}` | 📦 Orders: `{orders}`\n"
         f"💰 Revenue: `₹{revenue:.2f}` | 💳 Grizzly Bal: `{g_bal_str}`\n"
         f"💵 Margin: `₹{get_setting('profit_margin')}`\n"
-        f"📌 UPI ID: `{get_setting('upi_id')}`"
+        f"📌 UPI ID: `{get_setting('upi_id')}`\n"
+        f"📢 Group: `{get_setting('group_link')}`"
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=markup)
 
@@ -668,6 +676,14 @@ def admin_callbacks(call):
     elif call.data == "admin_set_margin":
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_MARGIN"}
         bot.send_message(ADMIN_ID, "💵 Enter profit margin amount to add (e.g. 10.0):")
+
+    elif call.data == "admin_set_group":
+        user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_GROUP"}
+        bot.send_message(ADMIN_ID, "📢 Send new Telegram group/channel link (e.g. `https://t.me/your_group`):", parse_mode="Markdown")
+
+    elif call.data == "admin_set_support":
+        user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_SUPPORT"}
+        bot.send_message(ADMIN_ID, "💬 Send support handle (without `@`):")
 
     elif call.data == "admin_add_tier":
         user_states[ADMIN_ID] = {"step": "ADMIN_ADD_TIER"}
@@ -714,6 +730,18 @@ def handle_admin_text_inputs(message):
         except Exception:
             bot.reply_to(message, "❌ Invalid number.")
 
+    elif state == "ADMIN_WAITING_GROUP":
+        group_url = message.text.strip()
+        set_setting("group_link", group_url)
+        del user_states[ADMIN_ID]
+        bot.reply_to(message, f"✅ Group Link Updated Successfully!\nLink: `{group_url}`", parse_mode="Markdown")
+
+    elif state == "ADMIN_WAITING_SUPPORT":
+        username = message.text.strip().replace("@", "")
+        set_setting("support_user", username)
+        del user_states[ADMIN_ID]
+        bot.reply_to(message, f"✅ Support Username Updated: `@{username}`", parse_mode="Markdown")
+
     elif state == "ADMIN_ADD_TIER":
         try:
             parts = message.text.strip().split()
@@ -746,5 +774,5 @@ def handle_admin_text_inputs(message):
 
 # ==================== START BOT ====================
 if __name__ == "__main__":
-    print("OTP-X Premium Bot Engine Running with All Countries Active...")
+    print("OTP-X Premium Bot Engine Running with Group Link Feature...")
     bot.infinity_polling()
