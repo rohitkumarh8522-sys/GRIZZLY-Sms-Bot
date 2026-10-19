@@ -63,12 +63,21 @@ def init_db():
         )
     ''')
     
-    # Multi-tier pricing table for countries
+    # Table for Countries
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS countries (
+            country_id INTEGER PRIMARY KEY,
+            country_name TEXT,
+            flag TEXT
+        )
+    ''')
+    
+    # Table for Price Tiers belonging to Countries
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS country_tiers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             country_id INTEGER,
-            country_name TEXT,
+            tier_name TEXT,
             base_price REAL,
             qty INTEGER
         )
@@ -88,19 +97,29 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('min_deposit', '50.0')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('max_deposit', '10000.0')")
     
-    # Add default sample tiers matching Grizzly structure
-    cursor.execute("SELECT COUNT(*) FROM country_tiers")
+    # Initial Sample Data Setup
+    cursor.execute("SELECT COUNT(*) FROM countries")
     if cursor.fetchone()[0] == 0:
-        default_tiers = [
-            (22, "🇮🇳 India (High Quality)", 55.0, 100),
-            (22, "🇮🇳 India (Standard)", 45.0, 7665),
-            (22, "🇮🇳 India (Economy)", 30.0, 7769),
-            (187, "🇺🇸 USA (Premium)", 40.0, 500),
-            (187, "🇺🇸 USA (Standard)", 25.0, 2000),
-            (0, "🌐 Global / Any", 15.0, 5000)
+        countries_data = [
+            (22, "India", "🇮🇳"),
+            (187, "USA", "🇺🇸"),
+            (6, "Indonesia", "🇮🇩"),
+            (5, "Myanmar", "🇲🇲"),
+            (60, "Bangladesh", "🇧🇩"),
+            (10, "Vietnam", "🇻🇳"),
+            (0, "Global / Any", "🌐")
         ]
-        for t in default_tiers:
-            cursor.execute("INSERT INTO country_tiers (country_id, country_name, base_price, qty) VALUES (?, ?, ?, ?)", t)
+        cursor.executemany("INSERT INTO countries (country_id, country_name, flag) VALUES (?, ?, ?)", countries_data)
+        
+        tiers_data = [
+            (22, "India (High Quality)", 55.0, 100),
+            (22, "India (Standard)", 45.0, 7665),
+            (22, "India (Economy)", 30.0, 7769),
+            (187, "USA (Premium)", 40.0, 500),
+            (187, "USA (Standard)", 25.0, 2000),
+            (0, "Global Server", 15.0, 5000)
+        ]
+        cursor.executemany("INSERT INTO country_tiers (country_id, tier_name, base_price, qty) VALUES (?, ?, ?, ?)", tiers_data)
             
     conn.commit()
     conn.close()
@@ -159,10 +178,18 @@ def get_user_orders(user_id):
     conn.close()
     return rows
 
-def get_country_tiers():
+def get_countries():
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT id, country_id, country_name, base_price, qty FROM country_tiers")
+    cursor.execute("SELECT country_id, country_name, flag FROM countries")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def get_tiers_by_country(country_id):
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, tier_name, base_price, qty FROM country_tiers WHERE country_id = ?", (country_id,))
     rows = cursor.fetchall()
     conn.close()
     return rows
@@ -170,7 +197,11 @@ def get_country_tiers():
 def add_country_tier(c_id, name, price, qty):
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO country_tiers (country_id, country_name, base_price, qty) VALUES (?, ?, ?, ?)", (c_id, name, price, qty))
+    # Check if country exists
+    cursor.execute("SELECT country_name FROM countries WHERE country_id = ?", (c_id,))
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO countries (country_id, country_name, flag) VALUES (?, ?, '🌐')", (c_id, f"Country {c_id}"))
+    cursor.execute("INSERT INTO country_tiers (country_id, tier_name, base_price, qty) VALUES (?, ?, ?, ?)", (c_id, name, price, qty))
     conn.commit()
     conn.close()
 
@@ -254,17 +285,49 @@ def main_categories_markup():
     
     return markup
 
-def tiers_grid_markup():
-    tiers = get_country_tiers()
+def countries_grid_markup():
+    countries = get_countries()
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    
+    buttons = []
+    global_btn = None
+    
+    for c_id, c_name, flag in countries:
+        btn_text = f"{flag} {c_name}"
+        if c_id == 0 or "Global" in c_name:
+            global_btn = types.InlineKeyboardButton(btn_text, callback_data=f"show_country_tiers:{c_id}")
+        else:
+            buttons.append(types.InlineKeyboardButton(btn_text, callback_data=f"show_country_tiers:{c_id}"))
+            
+    for i in range(0, len(buttons), 2):
+        if i + 1 < len(buttons):
+            markup.row(buttons[i], buttons[i+1])
+        else:
+            markup.row(buttons[i])
+            
+    if global_btn:
+        markup.add(global_btn)
+        
+    markup.add(types.InlineKeyboardButton("🔍 Search Country", callback_data="search_country"))
+    markup.add(types.InlineKeyboardButton("⬅️ Back", callback_data="home"))
+    return markup
+
+def country_tiers_markup(country_id):
+    tiers = get_tiers_by_country(country_id)
     profit = float(get_setting("profit_margin") or "5.0")
     markup = types.InlineKeyboardMarkup(row_width=1)
     
-    for tier_id, c_id, c_name, base_price, qty in tiers:
-        final_price = base_price + profit
-        btn_text = f"{c_name} — Qty: {qty} — ₹{final_price:.2f}"
-        markup.add(types.InlineKeyboardButton(btn_text, callback_data=f"buy_tier:{c_id}:{final_price}"))
-        
-    markup.add(types.InlineKeyboardButton("⬅️ Back", callback_data="home"))
+    if not tiers:
+        # Fallback if no specific tier added for this country yet
+        final_price = 30.0 + profit
+        markup.add(types.InlineKeyboardButton(f"Standard Quality — ₹{final_price:.2f}", callback_data=f"buy_tier:{country_id}:{final_price}"))
+    else:
+        for tier_id, tier_name, base_price, qty in tiers:
+            final_price = base_price + profit
+            btn_text = f"{tier_name} — Qty: {qty} — ₹{final_price:.2f}"
+            markup.add(types.InlineKeyboardButton(btn_text, callback_data=f"buy_tier:{country_id}:{final_price}"))
+            
+    markup.add(types.InlineKeyboardButton("⬅️ Back to Countries", callback_data="tg_accounts"))
     return markup
 
 # ==================== HANDLERS ====================
@@ -278,7 +341,7 @@ def send_welcome(message):
     text = (
         f"👋 Hi **{styled_name}**,\n\n"
         "💎 Welcome to STORE\n"
-        "Live Telegram accounts with multi-tier pricing.\n\n"
+        "Live Telegram accounts with instant delivery.\n\n"
         "__________________________________\n\n"
         f"💰 Your Wallet: ₹{int(balance) if balance.is_integer() else balance}\n"
         "__________________________________\n\n"
@@ -298,7 +361,7 @@ def user_callbacks(call):
         text = (
             f"👋 Hi **{styled_name}**,\n\n"
             "💎 Welcome to STORE\n"
-            "Live Telegram accounts with multi-tier pricing.\n\n"
+            "Live Telegram accounts with instant delivery.\n\n"
             "__________________________________\n\n"
             f"💰 Your Wallet: ₹{int(balance) if balance.is_integer() else balance}\n"
             "__________________________________\n\n"
@@ -308,10 +371,19 @@ def user_callbacks(call):
 
     elif call.data == "tg_accounts":
         text = (
-            "✉️ **Telegram Accounts (Multi-Tier Pricing)**\n\n"
-            "Select your preferred quality and price tier below:\n"
+            "✉️ **Mail Accounts**\n\n"
+            "Mail-included accounts from all available qualities.\n\n"
+            "👇 **Select a region to browse:**"
         )
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=tiers_grid_markup())
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=countries_grid_markup())
+
+    elif call.data.startswith("show_country_tiers:"):
+        country_id = int(call.data.split(":")[1])
+        text = (
+            "📶 **Select Available Quality & Price Tier:**\n\n"
+            "Choose your preferred package below:"
+        )
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=country_tiers_markup(country_id))
 
     elif call.data == "check_wallet":
         balance = get_user_balance(user_id)
@@ -557,13 +629,18 @@ def admin_callbacks(call):
 
     elif call.data == "admin_add_tier":
         user_states[ADMIN_ID] = {"step": "ADMIN_ADD_TIER"}
-        bot.send_message(ADMIN_ID, "🌍 Format: `COUNTRY_ID TIER_NAME BASE_PRICE QTY`\nExample: `22 🇮🇳 India (Economy) 30.0 7769`", parse_mode="Markdown")
+        bot.send_message(ADMIN_ID, "🌍 Format: `COUNTRY_ID TIER_NAME BASE_PRICE QTY`\nExample: `22 India (Economy) 30.0 7769`", parse_mode="Markdown")
 
     elif call.data == "admin_del_tier":
-        tiers = get_country_tiers()
+        conn = sqlite3.connect("bot_database.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, tier_name, base_price FROM country_tiers")
+        tiers = cursor.fetchall()
+        conn.close()
+        
         markup = types.InlineKeyboardMarkup(row_width=1)
-        for t_id, c_id, c_name, price, qty in tiers:
-            markup.add(types.InlineKeyboardButton(f"❌ Delete: {c_name} (₹{price})", callback_data=f"admin_confirm_del:{t_id}"))
+        for t_id, t_name, price in tiers:
+            markup.add(types.InlineKeyboardButton(f"❌ Delete: {t_name} (₹{price})", callback_data=f"admin_confirm_del:{t_id}"))
         bot.send_message(ADMIN_ID, "🗑️ Select tier to delete:", reply_markup=markup)
 
     elif call.data.startswith("admin_confirm_del:"):
@@ -627,5 +704,5 @@ def handle_admin_text_inputs(message):
 
 # ==================== START BOT ====================
 if __name__ == "__main__":
-    print("TG SHOP Bot Fixed and Running...")
+    print("TG SHOP Bot Running with Clean 2-Step Country -> Tier System...")
     bot.infinity_polling()
