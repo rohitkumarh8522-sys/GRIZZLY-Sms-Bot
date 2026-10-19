@@ -84,9 +84,9 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('support_user', 'admin_username')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('upi_id', 'rohit0853@ptaxis')")
     cursor.execute("UPDATE settings SET value = 'rohit0853@ptaxis' WHERE key = 'upi_id' AND (value = 'example@upi' OR value = '')")
-    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('profit_margin', '10.0')") # Profit in INR or Currency matching base
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('profit_margin', '10.0')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('min_deposit', '50.0')")
-    cursor.execute("INSERT OR IGNORE INTO settings, value) VALUES ('max_deposit', '10000.0')")
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('max_deposit', '10000.0')")
     
     # Add default sample tiers matching Grizzly structure
     cursor.execute("SELECT COUNT(*) FROM country_tiers")
@@ -627,5 +627,5 @@ def handle_admin_text_inputs(message):
 
 # ==================== START BOT ====================
 if __name__ == "__main__":
-    print("TG SHOP Bot Running with Multi-Tier Pricing System...")
+    print("TG SHOP Bot Fixed and Running...")
     bot.infinity_polling()
