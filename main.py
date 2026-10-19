@@ -2,6 +2,7 @@ import sqlite3
 import requests
 import os
 import threading
+import urllib.parse
 from flask import Flask
 import telebot
 from telebot import types
@@ -78,7 +79,6 @@ def init_db():
     ''')
     
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('support_user', 'admin_username')")
-    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('qr_file_id', '')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('upi_id', 'example@upi')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('profit_margin', '5.0')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('min_deposit', '50.0')")
@@ -189,6 +189,13 @@ def get_sales_stats():
     conn.close()
     return total_orders, total_revenue, total_users
 
+# ==================== DYNAMIC DYNAMIC QR GENERATOR ====================
+def generate_upi_qr(upi_id, amount, name="TG_SHOP"):
+    """Generates a dynamic UPI QR Code Image URL using open API"""
+    upi_uri = f"upi://pay?pa={upi_id}&pn={urllib.parse.quote(name)}&am={amount}&cu=INR"
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={urllib.parse.quote(upi_uri)}"
+    return qr_url
+
 # ==================== GRIZZLY SMS API ====================
 GRIZZLY_BASE_URL = "https://api.grizzlysms.com/stubs/handler_api.php"
 
@@ -232,22 +239,13 @@ def main_categories_markup():
     support_username = get_setting("support_user")
     markup = types.InlineKeyboardMarkup()
     
-    # Row 1: Full width Telegram Accounts
     markup.add(types.InlineKeyboardButton("📱 Telegram Accounts", callback_data="tg_accounts"))
-    
-    # Row 2: Grid My Wallet & Deposit
     markup.row(
         types.InlineKeyboardButton("💰 My Wallet", callback_data="check_wallet"),
         types.InlineKeyboardButton("➕ Deposit", callback_data="add_money")
     )
-    
-    # Row 3: My Orders
     markup.add(types.InlineKeyboardButton("📦 My Orders", callback_data="my_orders"))
-    
-    # Row 4: Sales
     markup.add(types.InlineKeyboardButton("📢 Sales", callback_data="sales_info"))
-    
-    # Row 5: Support
     markup.add(types.InlineKeyboardButton("🆘 Support", url=f"https://t.me/{support_username}"))
     
     return markup
@@ -268,7 +266,6 @@ def countries_grid_markup():
         else:
             buttons.append(types.InlineKeyboardButton(btn_text, callback_data=f"buy_num:{c_id}:{final_price}"))
             
-    # Add pairs in 2 columns
     for i in range(0, len(buttons), 2):
         if i + 1 < len(buttons):
             markup.row(buttons[i], buttons[i+1])
@@ -288,8 +285,6 @@ def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
     first_name = message.from_user.first_name or "Client"
-    
-    # Formatting user name in spaced uppercase style
     styled_name = " ".join(first_name.upper())
     
     text = (
@@ -356,38 +351,19 @@ def user_callbacks(call):
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
 
     elif call.data == "add_money":
-        qr_url = get_setting("qr_file_id")
-        upi_id = get_setting("upi_id")
+        user_states[user_id] = {"step": "WAITING_DEPOSIT_AMOUNT"}
         min_dep = get_setting("min_deposit")
         max_dep = get_setting("max_deposit")
         
-        caption = (
-            "📥 **DEPOSIT FUNDS**\n\n"
-            f"⚠️ Min: `₹{min_dep}` | Max: `₹{max_dep}`\n\n"
-            "1️⃣ Scan QR Code or pay via UPI ID:\n"
-            f"📌 ` {upi_id} `\n\n"
-            "2️⃣ After payment, click below to submit receipt:"
-        )
-        
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("💵 Enter Amount & Upload Proof", callback_data="start_deposit"))
-        markup.add(types.InlineKeyboardButton("⬅️ Back", callback_data="home"))
-        
-        try:
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-        except:
-            pass
-
-        if qr_url and qr_url.startswith("http"):
-            bot.send_photo(call.message.chat.id, qr_url, caption=caption, parse_mode="Markdown", reply_markup=markup)
-        else:
-            bot.send_message(call.message.chat.id, caption, parse_mode="Markdown", reply_markup=markup)
-
-    elif call.data == "start_deposit":
-        user_states[user_id] = {"step": "WAITING_DEPOSIT_AMOUNT"}
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="home"))
-        bot.send_message(call.message.chat.id, "💵 **Enter the amount paid (e.g. 100):**", parse_mode="Markdown", reply_markup=markup)
+        
+        bot.edit_message_text(
+            f"💳 **AUTOMATED DEPOSIT**\n\n"
+            f"⚠️ Min Deposit: `₹{min_dep}` | Max Deposit: `₹{max_dep}`\n\n"
+            f"💵 **Enter the amount you want to add to your wallet (e.g. 100):**",
+            call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup
+        )
 
     elif call.data == "my_orders":
         orders = get_user_orders(user_id)
@@ -481,6 +457,40 @@ def user_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "❌ Cannot cancel right now.", show_alert=True)
 
+@bot.message_handler(func=lambda msg: msg.from_user.id in user_states and user_states[msg.from_user.id].get("step") == "WAITING_DEPOSIT_AMOUNT")
+def handle_deposit_amount(message):
+    user_id = message.from_user.id
+    try:
+        amt = float(message.text.strip())
+        min_dep = float(get_setting("min_deposit") or "50.0")
+        max_dep = float(get_setting("max_deposit") or "10000.0")
+        
+        if amt < min_dep or amt > max_dep:
+            bot.reply_to(message, f"❌ Amount must be between `₹{min_dep}` and `₹{max_dep}`.", parse_mode="Markdown")
+            return
+            
+        upi_id = get_setting("upi_id")
+        qr_image_url = generate_upi_qr(upi_id, amt)
+        
+        user_states[user_id] = {"step": "WAITING_DEPOSIT_SCREENSHOT", "amount": amt}
+        
+        caption = (
+            f"📲 **DYNAMIC PAYMENT QR GENERATED**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💵 **Amount To Pay:** `₹{amt:.2f}`\n"
+            f"🏦 **UPI ID:** `{upi_id}`\n\n"
+            f"1️⃣ Scan this QR Code via PhonePe / GPay / Paytm / BHIM.\n"
+            f"2️⃣ After payment, send the clear screenshot here for 1-click approval."
+        )
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("❌ Cancel Deposit", callback_data="home"))
+        
+        bot.send_photo(message.chat.id, qr_image_url, caption=caption, parse_mode="Markdown", reply_markup=markup)
+        
+    except ValueError:
+        bot.reply_to(message, "❌ Please enter a valid amount in numbers (e.g., 100).")
+
 @bot.message_handler(func=lambda msg: msg.from_user.id in user_states and user_states[msg.from_user.id].get("step") == "SEARCH_COUNTRY")
 def handle_country_search(message):
     user_id = message.from_user.id
@@ -503,23 +513,6 @@ def handle_country_search(message):
         markup.add(types.InlineKeyboardButton("⬅️ Back to Categories", callback_data="tg_accounts"))
         bot.send_message(message.chat.id, "❌ No matching country found.", reply_markup=markup)
 
-@bot.message_handler(func=lambda msg: msg.from_user.id in user_states and user_states[msg.from_user.id].get("step") == "WAITING_DEPOSIT_AMOUNT")
-def handle_deposit_amount(message):
-    user_id = message.from_user.id
-    try:
-        amt = float(message.text.strip())
-        min_dep = float(get_setting("min_deposit") or "50.0")
-        max_dep = float(get_setting("max_deposit") or "10000.0")
-        
-        if amt < min_dep or amt > max_dep:
-            bot.reply_to(message, f"❌ Amount must be between `₹{min_dep}` and `₹{max_dep}`.", parse_mode="Markdown")
-            return
-            
-        user_states[user_id] = {"step": "WAITING_DEPOSIT_SCREENSHOT", "amount": amt}
-        bot.reply_to(message, f"✅ Amount accepted: `₹{amt:.2f}`\n\n📸 **Upload payment screenshot:**", parse_mode="Markdown")
-    except ValueError:
-        bot.reply_to(message, "❌ Please enter a valid number.")
-
 @bot.message_handler(content_types=['photo'])
 def handle_user_screenshot(message):
     user_id = message.from_user.id
@@ -539,14 +532,14 @@ def handle_user_screenshot(message):
         conn.close()
         
         del user_states[user_id]
-        bot.reply_to(message, f"✅ Screenshot received! ID: `#{req_id}`", parse_mode="Markdown")
+        bot.reply_to(message, f"✅ Payment screenshot submitted! Ticket ID: `#{req_id}`\nWait for admin verification.", parse_mode="Markdown")
         
         admin_markup = types.InlineKeyboardMarkup(row_width=2)
         admin_markup.add(
             types.InlineKeyboardButton(f"✅ Approve (₹{amt:.2f})", callback_data=f"admin_approve:{req_id}:{user_id}:{amt}"),
             types.InlineKeyboardButton("❌ Reject", callback_data=f"admin_reject:{req_id}:{user_id}")
         )
-        bot.send_photo(ADMIN_ID, photo_id, caption=f"🚨 Deposit Ticket `#{req_id}`\nUser: `{user_id}`\nAmount: `₹{amt:.2f}`", parse_mode="Markdown", reply_markup=admin_markup)
+        bot.send_photo(ADMIN_ID, photo_id, caption=f"🚨 **NEW PAYMENT PROOF**\nTicket ID: `#{req_id}`\nUser: `{user_id}`\nAmount: `₹{amt:.2f}`", parse_mode="Markdown", reply_markup=admin_markup)
 
 # ==================== ADMIN CONTROL PANEL ====================
 @bot.message_handler(commands=['admin'])
@@ -560,7 +553,6 @@ def admin_panel(message):
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("🖼️ Set Payment QR URL", callback_data="admin_set_qr"),
         types.InlineKeyboardButton("🏷️ Set UPI ID", callback_data="admin_set_upi"),
         types.InlineKeyboardButton("💬 Support Handle", callback_data="admin_set_support"),
         types.InlineKeyboardButton("💵 Profit Margin", callback_data="admin_set_margin"),
@@ -578,7 +570,7 @@ def admin_panel(message):
         f"💰 Revenue: `₹{revenue:.2f}`\n"
         f"💳 Grizzly Balance: `{g_bal_str}`\n"
         f"💵 Margin: `₹{get_setting('profit_margin')}`\n"
-        f"📌 UPI: `{get_setting('upi_id')}`"
+        f"📌 UPI ID: `{get_setting('upi_id')}`"
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=markup)
 
@@ -640,13 +632,9 @@ def admin_callbacks(call):
         delete_country(c_id)
         bot.edit_message_text("✅ Country deleted!", call.message.chat.id, call.message.message_id)
 
-    elif call.data == "admin_set_qr":
-        user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_QR"}
-        bot.send_message(ADMIN_ID, "🔗 Send QR Image Direct Link (URL):")
-
     elif call.data == "admin_set_upi":
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_UPI"}
-        bot.send_message(ADMIN_ID, "🏷️ Send new UPI ID:")
+        bot.send_message(ADMIN_ID, "🏷️ Send new target UPI ID:")
 
     elif call.data == "admin_set_support":
         user_states[ADMIN_ID] = {"step": "ADMIN_WAITING_SUPPORT"}
@@ -663,13 +651,7 @@ def handle_admin_text_inputs(message):
 
     state = user_states.get(ADMIN_ID, {}).get("step")
     
-    if state == "ADMIN_WAITING_QR":
-        qr_url = message.text.strip()
-        set_setting("qr_file_id", qr_url)
-        del user_states[ADMIN_ID]
-        bot.reply_to(message, f"✅ QR URL Updated: `{qr_url}`", parse_mode="Markdown")
-
-    elif state == "ADMIN_WAITING_MARGIN":
+    if state == "ADMIN_WAITING_MARGIN":
         try:
             m = float(message.text.strip())
             set_setting("profit_margin", str(m))
@@ -733,5 +715,5 @@ def handle_admin_text_inputs(message):
 
 # ==================== START BOT ====================
 if __name__ == "__main__":
-    print("TG SHOP Bot Running with Exact Screenshot UI Layout...")
+    print("TG SHOP Bot Running with Dynamic UPI QR System...")
     bot.infinity_polling()
